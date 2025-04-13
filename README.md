@@ -91,9 +91,9 @@ creation_rules:
 ## Usage
 
 ```bash
-./git-sops.sh init           # Sets up filter and prompts to decrypt
-./git-sops.sh clean path     # Encrypts file before staging
-./git-sops.sh smudge path    # Decrypts file during checkout
+git-sops init           # Sets up filter and prompts to decrypt
+git-sops clean FILE     # Encrypts file before staging
+git-sops smudge FILE    # Decrypts file during checkout
 ```
 
 Git runs the clean and smudge operations automatically based on `.gitattributes`.
@@ -109,4 +109,5 @@ Git runs the clean and smudge operations automatically based on `.gitattributes`
   Ensure the file contains SOPS-encrypted data (e.g., `ENC[AES256...`) and that your SOPS config is valid.
 
 - **Filter not triggering?**  
-  Run `git config --local --get-regexp 'filter\.crypt\..*'` to confirm the filter is set.
+  Run `git config --local --get-regexp 'filter\.crypt\..*'` to confirm the
+  filter is set.
