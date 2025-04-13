@@ -1,0 +1,184 @@
+#!/bin/bash
+
+# git-sops: Integrate the sops secrets manager with Git smudge/clean filters
+# Enables automatic encryption/decryption of tracked secrets via .gitattributes
+
+set -eo pipefail
+
+self_path=$(readlink -f "$0")
+git_filter_name=crypt
+encryption_marker="ENC\["
+
+sops_config=${SOPS_CONFIG:-$HOME/.config/sops/sops.yaml}
+
+usage() {
+	cat <<- EOF
+		Usage: $0 <command> [file]
+
+		Commands:
+		  init         Initialize Git repo with smudge/clean filters
+		  smudge FILE  Decrypt FILE during checkout
+		  clean FILE   Encrypt FILE before staging
+
+		Environment:
+		  SOPS_CONFIG  Path to sops.yaml (default: ~/.config/sops/sops.yaml)
+	EOF
+}
+
+# Check if a file exists in HEAD
+exists_in_head() {
+	local file="$1"
+	git cat-file -e "HEAD:$file" &> /dev/null
+}
+
+# Check if a file is encrypted by searching for the encryption marker
+is_encrypted() {
+	local file=$1
+	if [[ ! -f "$file" ]]; then
+		return
+	fi
+
+	grep -q "$encryption_marker" "$file"
+}
+
+# Check if the Git repository has already been initialized with the filter
+is_initialized() {
+	git config --get "filter.${git_filter_name}.required" &> /dev/null &&
+		git config --get "filter.${git_filter_name}.smudge" &> /dev/null &&
+		git config --get "filter.${git_filter_name}.clean" &> /dev/null
+}
+
+# Check if the working copy of a file actually differs from its decrypted content in HEAD
+is_changed() {
+	local file="$1"
+	local file_type
+
+	# If the file does not exist in HEAD, consider it changed (new file)
+	if ! exists_in_head "$file"; then
+		return 0
+	fi
+
+	file_type=$(get_file_type "$file")
+
+	# Compare the decrypted HEAD contents to the working file via streaming
+	! cmp -s "$file" <(git cat-file -p "HEAD:$file" | secrets decrypt "$file" "$file_type")
+}
+
+# Determine the type of file for use with sops
+get_file_type() {
+	local file="$1"
+	case "$file" in
+		*.json*) echo "json" ;;
+		*.yaml* | *.yml*) echo "yaml" ;;
+		*.env* | *.dotenv*) echo "dotenv" ;;
+		*.ini*) echo "ini" ;;
+		*) echo "binary" ;;
+	esac
+}
+
+# Encrypt/decrypt file with sops
+secrets() {
+	local action=$1
+	local file=$2
+	local file_type=$3
+
+	if [[ "$action" != @(encrypt|decrypt) ]]; then
+		echo "Error: Invalid action. Use 'encrypt' or 'decrypt'" >&2
+		exit 1
+	fi
+
+	sops --config "$sops_config" \
+		--input-type "$file_type" \
+		--output-type "$file_type" \
+		--filename-override "$file" \
+		--"$action" /dev/stdin
+}
+
+# Decrypt the contents of encrypted files in a repository
+decrypt_repo() {
+	git ls-files | while read -r file; do
+		if is_encrypted "$file"; then
+			# Explicitly ignore the clean filter here
+			git -c filter.${git_filter_name}.clean=cat rm --cached "$file" &> /dev/null
+			git -c filter.${git_filter_name}.clean=cat checkout HEAD -- "$file"
+		fi
+	done
+}
+
+# Initialize repository with the smudge and clean filter
+init() {
+	if is_initialized; then
+		echo "Repository already initialized; skipping"
+		return
+	fi
+
+	git config --local "filter.${git_filter_name}.required" true
+	git config --local "filter.${git_filter_name}.smudge" "$self_path smudge '%f'"
+	git config --local "filter.${git_filter_name}.clean" "$self_path clean '%f'"
+	echo "Repository initialized for use with sops"
+
+	read -rp "Decrypt existing encrypted files? [yes/no] " should_decrypt
+	if [[ "$should_decrypt" == [Yy]* ]]; then
+		decrypt_repo
+	fi
+}
+
+# Decrypt the file content during checkout (smudge filter)
+smudge() {
+	local file="$1"
+	local file_type
+
+	if [[ -z "$file" ]]; then
+		echo "Error: No file specified for smudge" >&2
+		exit 1
+	fi
+
+	file_type=$(get_file_type "$file")
+	secrets decrypt "$file" "$file_type"
+
+	echo "Decrypted as $file_type: $file" >&2
+}
+
+# Encrypt the file content before staging (clean filter)
+clean() {
+	local file="$1"
+	local file_type
+
+	if [[ -z "$file" ]]; then
+		echo "Error: No file specified for clean" >&2
+		exit 1
+	fi
+
+	# If the file has not changed, reuse the existing encrypted content from HEAD
+	if ! is_changed "$file"; then
+		git cat-file -p "HEAD:$file"
+		return
+	fi
+
+	file_type=$(get_file_type "$file")
+	secrets encrypt "$file" "$file_type"
+
+	echo "Encrypted as $file_type: $file" >&2
+}
+
+if ! command -v sops &> /dev/null; then
+	echo "Missing: sops"
+	exit 1
+fi
+
+if [[ ! -f "$sops_config" ]]; then
+	echo "Missing config: $sops_config"
+	exit 1
+fi
+
+if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+	echo "Error: Not in a Git repo" >&2
+	exit 1
+fi
+
+case $1 in
+	init) shift && init ;;
+	smudge) shift && smudge "$1" ;;
+	clean) shift && clean "$1" ;;
+	*) usage ;;
+esac
