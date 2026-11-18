@@ -7,7 +7,7 @@ set -eo pipefail
 
 self_path=$(readlink -f "$0")
 git_filter_name=crypt
-encryption_marker="ENC\["
+encryption_marker="ENC\[AES256_GCM,"
 
 sops_config=${SOPS_CONFIG:-$HOME/.config/sops/sops.yaml}
 

@@ -11,7 +11,7 @@ Ideal for `.env`, `.yaml`, and similar configuration files that should remain en
 - Supports JSON, YAML, INI, dotenv, and binary formats
 - Pluggable: works with SOPS backends (e.g., `age`, GCP KMS, AWS KMS)
 
----
+______________________________________________________________________
 
 ## Quick Start
 
@@ -63,10 +63,10 @@ MY_DATABASE_USER=myuser
 MY_DATABASE_PASS=ENC[AES256_GCM,data: ...]
 ```
 
-> [!NOTE]  
-> For now, this tool detects whether a file is encrypted by scanning for the string `ENC[`, which is how SOPS marks encrypted values. While a bit fragile, and obviously subject to future improvement, this does **not** affect how SOPS encrypts data—only how this tool identifies files as already encrypted.
+> [!NOTE]\
+> For now, this tool detects whether a file is encrypted by scanning for the string `ENC[AES256_GCM,`, which is how SOPS marks encrypted values. While a bit fragile, and obviously subject to future improvement, this does **not** affect how SOPS encrypts data—only how this tool identifies files as already encrypted.
 
----
+______________________________________________________________________
 
 ## Prerequisites
 
@@ -86,7 +86,7 @@ creation_rules:
   - age: *default_age
 ```
 
----
+______________________________________________________________________
 
 ## Usage
 
@@ -98,16 +98,16 @@ git-sops smudge FILE    # Decrypts file during checkout
 
 Git runs the clean and smudge operations automatically based on `.gitattributes`.
 
----
+______________________________________________________________________
 
 ## Troubleshooting
 
-- **Nothing happens on commit?**  
+- **Nothing happens on commit?**\
   Make sure the file is listed in `.gitattributes` and that Git filters are initialized (`init`).
-  
-- **Not decrypting?**  
+
+- **Not decrypting?**\
   Ensure the file contains SOPS-encrypted data (e.g., `ENC[AES256...`) and that your SOPS config is valid.
 
-- **Filter not triggering?**  
+- **Filter not triggering?**\
   Run `git config --local --get-regexp 'filter\.crypt\..*'` to confirm the
   filter is set.
