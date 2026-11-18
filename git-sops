@@ -147,8 +147,11 @@ clean() {
 		return
 	fi
 
+	# If file content is unchanged, reuse existing blob
+	# (grep without -q to avoid early exit tripping pipefail)
 	if git cat-file -e ":$file" 2> /dev/null &&
-		git cat-file blob ":$file" | secrets decrypt "$file" "$file_type" | cmp -s - "$tmp"; then
+		git cat-file blob ":$file" | grep "$encryption_marker" > /dev/null &&
+		git cat-file blob ":$file" | secrets decrypt "$file" "$file_type" 2> /dev/null | cmp -s - "$tmp"; then
 		git cat-file blob ":$file"
 		return
 	fi
