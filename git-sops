@@ -128,7 +128,7 @@ smudge() {
 # Encrypt the file content before staging (clean filter)
 clean() {
 	local file="$1"
-	local file_type tmp
+	local file_type tmp_stdin tmp_blob
 
 	if [[ -z "$file" ]]; then
 		echo "Error: No file specified for clean" >&2
@@ -137,26 +137,27 @@ clean() {
 
 	file_type=$(get_file_type "$file")
 
-	# Consume stdin instead of reading the working file
-	tmp=$(mktemp)
-	trap 'rm -f "$tmp"' EXIT
-	cat > "$tmp"
+	tmp_stdin=$(mktemp)
+	tmp_blob=$(mktemp)
+	trap 'rm -f "$tmp_stdin" "$tmp_blob"' EXIT
 
-	if grep -q "$encryption_marker" "$tmp"; then
-		cat "$tmp"
+	# Consume stdin instead of reading the working file
+	cat > "$tmp_stdin"
+
+	if grep -q "$encryption_marker" "$tmp_stdin"; then
+		cat "$tmp_stdin"
 		return
 	fi
 
 	# If file content is unchanged, reuse existing blob
-	# (grep without -q to avoid early exit tripping pipefail)
-	if git cat-file -e ":$file" 2> /dev/null &&
-		git cat-file blob ":$file" | grep "$encryption_marker" > /dev/null &&
-		git cat-file blob ":$file" | secrets decrypt "$file" "$file_type" 2> /dev/null | cmp -s - "$tmp"; then
-		git cat-file blob ":$file"
+	if git cat-file blob ":$file" > "$tmp_blob" 2> /dev/null &&
+		grep -q "$encryption_marker" "$tmp_blob" &&
+		secrets decrypt "$file" "$file_type" < "$tmp_blob" 2> /dev/null | cmp -s - "$tmp_stdin"; then
+		cat "$tmp_blob"
 		return
 	fi
 
-	secrets encrypt "$file" "$file_type" < "$tmp"
+	secrets encrypt "$file" "$file_type" < "$tmp_stdin"
 	echo "Encrypted as $file_type: $file" >&2
 }
 
