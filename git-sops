@@ -29,7 +29,7 @@ usage() {
 is_encrypted() {
 	local file=$1
 	if [[ ! -f "$file" ]]; then
-		return
+		return 1
 	fi
 
 	grep -q "$encryption_marker" "$file"
@@ -74,13 +74,21 @@ secrets() {
 
 # Decrypt the contents of encrypted files in a repository
 decrypt_repo() {
-	git ls-files | while read -r file; do
-		if is_encrypted "$file"; then
-			# Explicitly ignore the clean filter here
-			git -c filter.${git_filter_name}.clean=cat rm --cached "$file" &> /dev/null
-			git -c filter.${git_filter_name}.clean=cat checkout HEAD -- "$file"
+	local file
+
+	while IFS= read -r -d '' file; do
+		if ! [[ $(git check-attr filter -- "$file") == *": filter: $git_filter_name" ]]; then
+			continue
 		fi
-	done
+
+		if ! is_encrypted "$file"; then
+			continue
+		fi
+
+		# Explicitly ignore the clean filter here
+		git -c "filter.${git_filter_name}.clean=cat" rm --cached "$file" &> /dev/null
+		git -c "filter.${git_filter_name}.clean=cat" checkout HEAD -- "$file"
+	done < <(git ls-files -z)
 }
 
 # Initialize repository with the smudge and clean filter
