@@ -99,8 +99,8 @@ init() {
 	fi
 
 	git config --local "filter.${git_filter_name}.required" true
-	git config --local "filter.${git_filter_name}.smudge" "$self_path smudge '%f'"
-	git config --local "filter.${git_filter_name}.clean" "$self_path clean '%f'"
+	git config --local "filter.${git_filter_name}.smudge" "\"$self_path\" smudge %f"
+	git config --local "filter.${git_filter_name}.clean" "\"$self_path\" clean %f"
 	echo "Repository initialized for use with sops"
 
 	read -rp "Decrypt existing encrypted files? [yes/no] " should_decrypt
