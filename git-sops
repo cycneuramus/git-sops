@@ -25,6 +25,11 @@ usage() {
 	EOF
 }
 
+# Strip blank lines for comparisons since sops discards them (https://github.com/getsops/sops/issues/396)
+normalize() {
+	grep -v '^[[:space:]]*$'
+}
+
 # Check if a file is encrypted by searching for the encryption marker
 is_encrypted() {
 	local file=$1
@@ -152,7 +157,8 @@ clean() {
 	# If file content is unchanged, reuse existing blob
 	if git cat-file blob ":$file" > "$tmp_blob" 2> /dev/null &&
 		grep -q "$encryption_marker" "$tmp_blob" &&
-		secrets decrypt "$file" "$file_type" < "$tmp_blob" 2> /dev/null | cmp -s - "$tmp_stdin"; then
+		cmp -s <(secrets decrypt "$file" "$file_type" < "$tmp_blob" 2> /dev/null | normalize) \
+			<(normalize < "$tmp_stdin"); then
 		cat "$tmp_blob"
 		return
 	fi
